@@ -140,7 +140,7 @@ impl<T: 'static> Sink for MockTransport<T> {
 }
 
 impl<T: 'static> pipeline::Transport for MockTransport<T> {}
-impl<B, T: 'static> multiplex::Transport<B> for MockTransport<T> {}
+impl<B, RID, T: 'static> multiplex::Transport<RID, B> for MockTransport<T> {}
 
 struct MockIo;
 

@@ -21,7 +21,7 @@ use futures::future;
 use futures::sync::oneshot;
 use futures::sync::mpsc;
 use tokio_proto::streaming::{Message, Body};
-use tokio_proto::streaming::multiplex::{Frame, RequestId};
+use tokio_proto::streaming::multiplex::Frame;
 use rand::Rng;
 
 mod support;

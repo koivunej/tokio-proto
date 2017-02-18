@@ -67,7 +67,7 @@ pub struct StreamingMultiplex<B>(B);
 /// Additional transport details relevant to streaming, multiplexed protocols.
 ///
 /// All methods added in this trait have default implementations.
-pub trait Transport<ReadBody>: 'static +
+pub trait Transport<RID, ReadBody>: 'static +
     Stream<Error = io::Error> +
     Sink<SinkError = io::Error>
 {
@@ -79,24 +79,24 @@ pub trait Transport<ReadBody>: 'static +
     fn tick(&mut self) {}
 
     /// Cancel interest in the exchange identified by RequestId
-    fn cancel(&mut self, request_id: RequestId) -> io::Result<()> {
+    fn cancel(&mut self, request_id: RID) -> io::Result<()> {
         drop(request_id);
         Ok(())
     }
 
     /// Tests to see if this I/O object may accept a body frame for the given
     /// request ID
-    fn poll_write_body(&mut self, id: RequestId) -> Async<()> {
+    fn poll_write_body(&mut self, id: RID) -> Async<()> {
         drop(id);
         Async::Ready(())
     }
 
     /// Invoked before the multiplexer dispatches the body chunk to the body
     /// stream.
-    fn dispatching_body(&mut self, id: RequestId, body: &ReadBody) {
+    fn dispatching_body(&mut self, id: RID, body: &ReadBody) {
         drop(id);
         drop(body);
     }
 }
 
-impl<T:Io + 'static, C: Codec + 'static, ReadBody> Transport<ReadBody> for Framed<T,C> {}
+impl<T:Io + 'static, C: Codec + 'static, RID, ReadBody> Transport<RID, ReadBody> for Framed<T,C> {}

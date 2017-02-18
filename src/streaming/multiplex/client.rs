@@ -31,15 +31,15 @@ pub trait ClientProto<T: 'static>: 'static {
     /// Response body chunks.
     type ResponseBody: 'static;
 
-    /// The type of request ids to use
-    type RequestId: RId + 'static;
+    /// The type of request ids to used to correlate requests to responses
+    type RequestId: RId;
 
     /// Errors, which are used both for error frames and for the service itself.
     type Error: From<io::Error> + 'static;
 
     /// The frame transport, which usually take `T` as a parameter.
     type Transport:
-        Transport<Self::ResponseBody,
+        Transport<Self::RequestId, Self::ResponseBody,
                   Item = Frame<Self::RequestId, Self::Response, Self::ResponseBody, Self::Error>,
                   SinkItem = Frame<Self::RequestId, Self::Request, Self::RequestBody, Self::Error>>;
 
@@ -48,8 +48,7 @@ pub trait ClientProto<T: 'static>: 'static {
     /// In simple cases, `Result<Self::Transport, Self::Error>` often suffices.
     type BindTransport: IntoFuture<Item = Self::Transport, Error = io::Error>;
 
-    /// Type of the `RequestIdSource` to use. In simple cases `streaming::multiplexing::Counter`
-    /// will do.
+    /// Type of the `RequestIdSource` to use.
     type RequestIds: RequestIdSource<Self::RequestId, Self::Request>;
 
     /// Create a `RequestIdSource` to generate ids for requests, used both on the wire and

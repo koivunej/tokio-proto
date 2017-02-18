@@ -162,7 +162,7 @@ pub trait Dispatch {
     type Stream: Stream<Item = Self::BodyIn, Error = Self::Error>;
 
     /// Transport type
-    type Transport: Transport<Self::BodyOut,
+    type Transport: Transport<Self::RID, Self::BodyOut,
                               Item = Frame<Self::RID, Self::Out, Self::BodyOut, Self::Error>,
                               SinkItem = Frame<Self::RID, Self::In, Self::BodyIn, Self::Error>>;
 

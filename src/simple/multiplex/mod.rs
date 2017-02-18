@@ -24,7 +24,6 @@ mod lift {
     use std::io;
     use std::marker::PhantomData;
 
-    use super::RequestId;
     use streaming::multiplex::{Frame, Transport};
     use futures::{Future, Stream, Sink, StartSend, Poll, Async, AsyncSink};
 
@@ -37,11 +36,11 @@ mod lift {
         marker: PhantomData<(A, E)>,
     }
 
-    impl<T, InnerItem, E> Stream for LiftTransport<T, E> where
+    impl<T, RID, InnerItem, E> Stream for LiftTransport<T, E> where
         E: 'static,
-        T: Stream<Item = (RequestId, InnerItem), Error = io::Error>,
+        T: Stream<Item = (RID, InnerItem), Error = io::Error>,
     {
-        type Item = Frame<u64, InnerItem, (), E>;
+        type Item = Frame<RID, InnerItem, (), E>;
         type Error = io::Error;
 
         fn poll(&mut self) -> Poll<Option<Self::Item>, io::Error> {
@@ -58,11 +57,11 @@ mod lift {
         }
     }
 
-    impl<T, InnerSink, E> Sink for LiftTransport<T, E> where
+    impl<T, RID, InnerSink, E> Sink for LiftTransport<T, E> where
         E: 'static,
-        T: Sink<SinkItem = (RequestId, InnerSink), SinkError = io::Error>
+        T: Sink<SinkItem = (RID, InnerSink), SinkError = io::Error>
     {
-        type SinkItem = Frame<u64, InnerSink, (), E>;
+        type SinkItem = Frame<RID, InnerSink, (), E>;
         type SinkError = io::Error;
 
         fn start_send(&mut self, request: Self::SinkItem)
@@ -91,11 +90,11 @@ mod lift {
         }
     }
 
-    impl<T, InnerItem, InnerSink, E> Transport<()> for LiftTransport<T, E> where
+    impl<T, RID, InnerItem, InnerSink, E> Transport<RID, ()> for LiftTransport<T, E> where
         E: 'static,
         T: 'static,
-        T: Stream<Item = (RequestId, InnerItem), Error = io::Error>,
-        T: Sink<SinkItem = (RequestId, InnerSink), SinkError = io::Error>
+        T: Stream<Item = (RID, InnerItem), Error = io::Error>,
+        T: Sink<SinkItem = (RID, InnerSink), SinkError = io::Error>
     {}
 
     impl<A, F, E> LiftBind<A, F, E> {

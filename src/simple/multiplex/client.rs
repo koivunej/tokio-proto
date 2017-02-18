@@ -1,12 +1,12 @@
 use BindClient;
-use super::{RequestId, Multiplex};
+use super::Multiplex;
 use super::lift::{LiftBind, LiftTransport};
 use simple::LiftProto;
 
 use std::io;
 
 use streaming::{self, Message};
-use streaming::multiplex::{StreamingMultiplex, Counter};
+use streaming::multiplex::{StreamingMultiplex, RequestIdSource, RId};
 use tokio_core::reactor::Handle;
 use tokio_service::Service;
 use futures::{stream, Stream, Sink, Future, IntoFuture, Poll};
@@ -28,19 +28,29 @@ pub trait ClientProto<T: 'static>: 'static {
     /// Response messages.
     type Response: 'static;
 
+    /// The type of request ids to used to correlate requests to responses
+    type RequestId: RId;
+
     /// The message transport, which usually take `T` as a parameter.
     ///
     /// An easy way to build a transport is to use `tokio_core::io::Framed`
     /// together with a `Codec`; in that case, the transport type is
     /// `Framed<T, YourCodec>`. See the crate docs for an example.
     type Transport: 'static +
-        Stream<Item = (RequestId, Self::Response), Error = io::Error> +
-        Sink<SinkItem = (RequestId, Self::Request), SinkError = io::Error>;
+        Stream<Item = (Self::RequestId, Self::Response), Error = io::Error> +
+        Sink<SinkItem = (Self::RequestId, Self::Request), SinkError = io::Error>;
 
     /// A future for initializing a transport from an I/O object.
     ///
     /// In simple cases, `Result<Self::Transport, Self::Error>` often suffices.
     type BindTransport: IntoFuture<Item = Self::Transport, Error = io::Error>;
+
+    /// The `RequestIdSource` to use.
+    type RequestIds: RequestIdSource<Self::RequestId, Self::Request>;
+
+    /// Create a `RequestIdSource` to generate ids for requests, used both on the wire and
+    /// internally to correlate responses to requests.
+    fn requestid_source(&self) -> Self::RequestIds;
 
     /// Build a transport from the given I/O object, using `self` for any
     /// configuration.
@@ -75,16 +85,16 @@ impl<T, P> streaming::multiplex::ClientProto<T> for LiftProto<P> where
 
     type Response = P::Response;
     type ResponseBody = ();
-    type RequestId = u64;
+    type RequestId = P::RequestId;
 
     type Error = io::Error;
 
     type Transport = LiftTransport<P::Transport, io::Error>;
     type BindTransport = LiftBind<T, <P::BindTransport as IntoFuture>::Future, io::Error>;
-    type RequestIds = Counter;
+    type RequestIds = P::RequestIds;
 
     fn requestid_source(&self) -> Self::RequestIds {
-        Counter::new()
+        P::requestid_source(self.lower())
     }
 
     fn bind_transport(&self, io: T) -> Self::BindTransport {

@@ -48,7 +48,7 @@ pub trait ServerProto<T: 'static>: 'static {
     /// Response body chunks.
     type ResponseBody: 'static;
 
-    /// The type of request ids to use
+    /// The type of request ids to used to correlate requests to responses
     type RequestId: RId + 'static;
 
     /// Errors, which are used both for error frames and for the service itself.
@@ -56,7 +56,7 @@ pub trait ServerProto<T: 'static>: 'static {
 
     /// The frame transport, which usually take `T` as a parameter.
     type Transport:
-        Transport<Self::RequestBody,
+        Transport<Self::RequestId, Self::RequestBody,
                   Item = Frame<Self::RequestId, Self::Request, Self::RequestBody, Self::Error>,
                   SinkItem = Frame<Self::RequestId, Self::Response, Self::ResponseBody, Self::Error>>;
 
