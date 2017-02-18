@@ -32,8 +32,8 @@ impl Codec for PipelineCodec {
 struct MultiplexCodec;
 
 impl Codec for MultiplexCodec {
-    type In = multiplex::Frame<u32, (), io::Error>;
-    type Out = multiplex::Frame<u32, u32, io::Error>;
+    type In = multiplex::Frame<u64, u32, (), io::Error>;
+    type Out = multiplex::Frame<u64, u32, u32, io::Error>;
 
     fn decode(&mut self, _: &mut EasyBuf) -> Result<Option<Self::In>, io::Error> {
         Ok(None)
@@ -68,6 +68,7 @@ impl<T: Io + 'static> multiplex::ServerProto<T> for MultiplexProto {
     type Response = u32;
     type Error = io::Error;
     type ResponseBody = u32;
+    type RequestId = u64;
     type Transport = Framed<T, MultiplexCodec>;
     type BindTransport = Result<Self::Transport, io::Error>;
 

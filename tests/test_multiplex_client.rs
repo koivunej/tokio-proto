@@ -89,7 +89,7 @@ fn drop_client_while_streaming_body() {
     mock.allow_and_assert_drop();
 }
 
-fn msg(id: RequestId, msg: &'static str) -> Frame<&'static str, u32, io::Error> {
+fn msg(id: u64, msg: &'static str) -> Frame<u64, &'static str, u32, io::Error> {
     Frame::Message {
         id: id,
         message: msg,
@@ -98,7 +98,7 @@ fn msg(id: RequestId, msg: &'static str) -> Frame<&'static str, u32, io::Error> 
     }
 }
 
-fn msg_with_body(id: RequestId, msg: &'static str) -> Frame<&'static str, u32, io::Error> {
+fn msg_with_body(id: u64, msg: &'static str) -> Frame<u64, &'static str, u32, io::Error> {
     Frame::Message {
         id: id,
         message: msg,
@@ -107,7 +107,7 @@ fn msg_with_body(id: RequestId, msg: &'static str) -> Frame<&'static str, u32, i
     }
 }
 
-fn body(id: RequestId, body: Option<u32>) -> Frame<&'static str, u32, io::Error> {
+fn body(id: u64, body: Option<u32>) -> Frame<u64, &'static str, u32, io::Error> {
     Frame::Body {
         id: id,
         chunk: body,

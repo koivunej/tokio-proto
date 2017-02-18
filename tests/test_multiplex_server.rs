@@ -469,7 +469,7 @@ fn test_read_error_during_stream() {
 fn test_error_handling_before_message_dispatched() {
 }
 
-fn msg(id: RequestId, msg: &'static str) -> Frame<&'static str, u32, io::Error> {
+fn msg(id: u64, msg: &'static str) -> Frame<u64, &'static str, u32, io::Error> {
     Frame::Message {
         id: id,
         message: msg,
@@ -478,7 +478,7 @@ fn msg(id: RequestId, msg: &'static str) -> Frame<&'static str, u32, io::Error> 
     }
 }
 
-fn msg_with_body(id: RequestId, msg: &'static str) -> Frame<&'static str, u32, io::Error> {
+fn msg_with_body(id: u64, msg: &'static str) -> Frame<u64, &'static str, u32, io::Error> {
     Frame::Message {
         id: id,
         message: msg,

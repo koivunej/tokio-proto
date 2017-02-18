@@ -15,7 +15,7 @@ use self::futures::sync::oneshot;
 use self::futures::{Future, Stream, Sink, Poll, StartSend, Async};
 use self::tokio_core::io::Io;
 use self::tokio_core::reactor::Core;
-use self::tokio_proto::streaming::multiplex;
+use self::tokio_proto::streaming::multiplex::{self, Counter};
 use self::tokio_proto::streaming::pipeline;
 use self::tokio_proto::streaming::{Message, Body};
 use self::tokio_proto::util::client_proxy::Response;
@@ -43,7 +43,7 @@ impl<T, U, I> pipeline::ClientProto<I> for MockProtocol<pipeline::Frame<T, U, io
     }
 }
 
-impl<T, U, I> multiplex::ClientProto<I> for MockProtocol<multiplex::Frame<T, U, io::Error>>
+impl<T, U, I> multiplex::ClientProto<I> for MockProtocol<multiplex::Frame<u64, T, U, io::Error>>
     where T: 'static,
           U: 'static,
           I: Io + 'static,
@@ -52,12 +52,18 @@ impl<T, U, I> multiplex::ClientProto<I> for MockProtocol<multiplex::Frame<T, U, 
     type RequestBody = U;
     type Response = T;
     type ResponseBody = U;
+    type RequestId = u64;
     type Error = io::Error;
-    type Transport = MockTransport<multiplex::Frame<T, U, io::Error>>;
+    type Transport = MockTransport<multiplex::Frame<u64, T, U, io::Error>>;
     type BindTransport = Result<Self::Transport, io::Error>;
+    type RequestIds = Counter;
+
+    fn requestid_source(&self) -> Self::RequestIds {
+        Counter::new()
+    }
 
     fn bind_transport(&self, _io: I)
-                      -> Result<MockTransport<multiplex::Frame<T, U, io::Error>>, io::Error> {
+                      -> Result<MockTransport<multiplex::Frame<u64, T, U, io::Error>>, io::Error> {
         Ok(self.0.borrow_mut().take().unwrap())
     }
 }
@@ -81,7 +87,7 @@ impl<T, U, I> pipeline::ServerProto<I> for MockProtocol<pipeline::Frame<T, U, io
     }
 }
 
-impl<T, U, I> multiplex::ServerProto<I> for MockProtocol<multiplex::Frame<T, U, io::Error>>
+impl<T, U, I> multiplex::ServerProto<I> for MockProtocol<multiplex::Frame<u64, T, U, io::Error>>
     where T: 'static,
           U: 'static,
           I: Io + 'static,
@@ -90,12 +96,13 @@ impl<T, U, I> multiplex::ServerProto<I> for MockProtocol<multiplex::Frame<T, U, 
     type RequestBody = U;
     type Response = T;
     type ResponseBody = U;
+    type RequestId = u64;
     type Error = io::Error;
-    type Transport = MockTransport<multiplex::Frame<T, U, io::Error>>;
+    type Transport = MockTransport<multiplex::Frame<u64, T, U, io::Error>>;
     type BindTransport = Result<Self::Transport, io::Error>;
 
     fn bind_transport(&self, _io: I)
-                      -> Result<MockTransport<multiplex::Frame<T, U, io::Error>>, io::Error> {
+                      -> Result<MockTransport<multiplex::Frame<u64, T, U, io::Error>>, io::Error> {
         Ok(self.0.borrow_mut().take().unwrap())
     }
 }
@@ -269,7 +276,7 @@ pub fn pipeline_server<S>(s: S)
 }
 
 pub fn multiplex_client()
-    -> (MockTransportCtl<multiplex::Frame<&'static str, u32, io::Error>>,
+    -> (MockTransportCtl<multiplex::Frame<u64, &'static str, u32, io::Error>>,
         Box<Service<Request = Message<&'static str, MockBodyStream>,
                     Response = Message<&'static str, Body<u32, io::Error>>,
                     Error = io::Error,
@@ -302,7 +309,7 @@ pub fn multiplex_client()
 }
 
 pub fn multiplex_server<S>(s: S)
-    -> (MockTransportCtl<multiplex::Frame<&'static str, u32, io::Error>>, Box<Any>)
+    -> (MockTransportCtl<multiplex::Frame<u64, &'static str, u32, io::Error>>, Box<Any>)
     where S: Service<Request = Message<&'static str, Body<u32, io::Error>>,
                      Response = Message<&'static str, MockBodyStream>,
                      Error = io::Error> + Send + 'static,
