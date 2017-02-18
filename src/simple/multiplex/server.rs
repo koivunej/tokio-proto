@@ -76,6 +76,7 @@ impl<T, P> streaming::multiplex::ServerProto<T> for LiftProto<P> where
 
     type Response = P::Response;
     type ResponseBody = ();
+    type RequestId = u64;
 
     type Error = io::Error;
 

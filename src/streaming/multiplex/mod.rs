@@ -3,6 +3,8 @@
 //! See the crate-level docs for an overview.
 
 use std::io;
+use std::hash::Hash;
+use std::fmt::Debug;
 use futures::{Stream, Sink, Async};
 use tokio_core::io::{Io, Framed, Codec};
 
@@ -22,6 +24,39 @@ pub mod advanced;
 
 /// Identifies a request / response thread
 pub type RequestId = u64;
+
+/// WIP RequestId abstraction
+pub trait RId: Copy + Hash + Eq + Debug + 'static {}
+
+impl<T: Copy + Hash + Eq + Debug + 'static> RId for T {}
+
+/// `RequestIdSource` is used to generate at minimum session-wide unique identifiers of type `RId`.
+/// Uniqueness needs depend on the application and can be wider than single session.
+///
+/// Depending on the protocol the identifier can be generated or embedded in the message `T`.
+pub trait RequestIdSource<Id, T>: 'static {
+    /// Generate the next request id or look it up from the message
+    fn next(&mut self, msg: &T) -> Id;
+}
+
+/// `RequestIdSource` generated from by an u64 counter
+pub struct Counter(u64);
+
+impl Counter {
+    /// Initialize the counter with value 0
+    pub fn new() -> Self {
+        Counter(0)
+    }
+}
+
+impl<T> RequestIdSource<u64, T> for Counter {
+    fn next(&mut self, _: &T) -> u64 {
+        let ret = self.0;
+        self.0 += 1;
+        ret
+    }
+}
+
 
 /// A marker used to flag protocols as being streaming and multiplexed.
 ///

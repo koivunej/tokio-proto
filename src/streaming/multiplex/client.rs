@@ -1,4 +1,4 @@
-use super::{Frame, RequestId, StreamingMultiplex, Transport};
+use super::{Frame, RId, RequestIdSource, StreamingMultiplex, Transport};
 use super::advanced::{Multiplex, MultiplexMessage};
 
 use BindClient;
@@ -31,19 +31,30 @@ pub trait ClientProto<T: 'static>: 'static {
     /// Response body chunks.
     type ResponseBody: 'static;
 
+    /// The type of request ids to use
+    type RequestId: RId + 'static;
+
     /// Errors, which are used both for error frames and for the service itself.
     type Error: From<io::Error> + 'static;
 
     /// The frame transport, which usually take `T` as a parameter.
     type Transport:
         Transport<Self::ResponseBody,
-                  Item = Frame<Self::Response, Self::ResponseBody, Self::Error>,
-                  SinkItem = Frame<Self::Request, Self::RequestBody, Self::Error>>;
+                  Item = Frame<Self::RequestId, Self::Response, Self::ResponseBody, Self::Error>,
+                  SinkItem = Frame<Self::RequestId, Self::Request, Self::RequestBody, Self::Error>>;
 
     /// A future for initializing a transport from an I/O object.
     ///
     /// In simple cases, `Result<Self::Transport, Self::Error>` often suffices.
     type BindTransport: IntoFuture<Item = Self::Transport, Error = io::Error>;
+
+    /// Type of the `RequestIdSource` to use. In simple cases `streaming::multiplexing::Counter`
+    /// will do.
+    type RequestIds: RequestIdSource<Self::RequestId, Self::Request>;
+
+    /// Create a `RequestIdSource` to generate ids for requests, used both on the wire and
+    /// internally to correlate responses to requests.
+    fn requestid_source(&self) -> Self::RequestIds;
 
     /// Build a transport from the given I/O object, using `self` for any
     /// configuration.
@@ -64,12 +75,14 @@ impl<P, T, B> BindClient<StreamingMultiplex<B>, T> for P where
     fn bind_client(&self, handle: &Handle, io: T) -> Self::BindClient {
         let (client, rx) = client_proxy::pair();
 
+        let rid_src = self.requestid_source();
+
         let task = self.bind_transport(io).into_future().and_then(|transport| {
             let dispatch: Dispatch<P, T, B> = Dispatch {
                 transport: transport,
                 requests: rx,
                 in_flight: HashMap::new(),
-                next_request_id: 0,
+                rid_src: rid_src,
             };
             Multiplex::new(dispatch)
         }).map_err(|e| {
@@ -92,8 +105,8 @@ struct Dispatch<P, T, B> where
 {
     transport: P::Transport,
     requests: Receiver<P::ServiceRequest, P::ServiceResponse, P::Error>,
-    in_flight: HashMap<RequestId, Complete<Result<P::ServiceResponse, P::Error>>>,
-    next_request_id: u64,
+    in_flight: HashMap<P::RequestId, Complete<Result<P::ServiceResponse, P::Error>>>,
+    rid_src: P::RequestIds,
 }
 
 impl<P, T, B> super::advanced::Dispatch for Dispatch<P, T, B> where
@@ -106,15 +119,16 @@ impl<P, T, B> super::advanced::Dispatch for Dispatch<P, T, B> where
     type BodyIn = P::RequestBody;
     type Out = P::Response;
     type BodyOut = P::ResponseBody;
+    type RID = P::RequestId;
     type Error = P::Error;
     type Stream = B;
-        type Transport = P::Transport;
+    type Transport = P::Transport;
 
     fn transport(&mut self) -> &mut Self::Transport {
         &mut self.transport
     }
 
-    fn dispatch(&mut self, message: MultiplexMessage<Self::Out, Body<Self::BodyOut, Self::Error>, Self::Error>) -> io::Result<()> {
+    fn dispatch(&mut self, message: MultiplexMessage<Self::RID, Self::Out, Body<Self::BodyOut, Self::Error>, Self::Error>) -> io::Result<()> {
         let MultiplexMessage { id, message, solo } = message;
 
         assert!(!solo);
@@ -128,15 +142,14 @@ impl<P, T, B> super::advanced::Dispatch for Dispatch<P, T, B> where
         Ok(())
     }
 
-    fn poll(&mut self) -> Poll<Option<MultiplexMessage<Self::In, B, Self::Error>>, io::Error> {
+    fn poll(&mut self) -> Poll<Option<MultiplexMessage<Self::RID, Self::In, B, Self::Error>>, io::Error> {
         trace!("Dispatch::poll");
         // Try to get a new request frame
         match self.requests.poll() {
             Ok(Async::Ready(Some(Ok((request, complete))))) => {
                 trace!("   --> received request");
 
-                let request_id = self.next_request_id;
-                self.next_request_id += 1;
+                let request_id = self.rid_src.next(&request);
 
                 trace!("   --> assigning request-id={:?}", request_id);
 
@@ -170,7 +183,7 @@ impl<P, T, B> super::advanced::Dispatch for Dispatch<P, T, B> where
         Async::Ready(())
     }
 
-    fn cancel(&mut self, _request_id: RequestId) -> io::Result<()> {
+    fn cancel(&mut self, _request_id: Self::RID) -> io::Result<()> {
         // TODO: implement
         Ok(())
     }

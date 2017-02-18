@@ -1,4 +1,4 @@
-use super::{Frame, RequestId, Transport};
+use super::{Frame, RId, Transport};
 use super::advanced::{Multiplex, MultiplexMessage};
 
 use BindServer;
@@ -48,14 +48,17 @@ pub trait ServerProto<T: 'static>: 'static {
     /// Response body chunks.
     type ResponseBody: 'static;
 
+    /// The type of request ids to use
+    type RequestId: RId + 'static;
+
     /// Errors, which are used both for error frames and for the service itself.
     type Error: From<io::Error> + 'static;
 
     /// The frame transport, which usually take `T` as a parameter.
     type Transport:
         Transport<Self::RequestBody,
-                  Item = Frame<Self::Request, Self::RequestBody, Self::Error>,
-                  SinkItem = Frame<Self::Response, Self::ResponseBody, Self::Error>>;
+                  Item = Frame<Self::RequestId, Self::Request, Self::RequestBody, Self::Error>,
+                  SinkItem = Frame<Self::RequestId, Self::Response, Self::ResponseBody, Self::Error>>;
 
     /// A future for initializing a transport from an I/O object.
     ///
@@ -101,7 +104,7 @@ struct Dispatch<S, T, P> where
     // The service handling the connection
     service: S,
     transport: P::Transport,
-    in_flight: Vec<(RequestId, InFlight<S::Future>)>,
+    in_flight: Vec<(P::RequestId, InFlight<S::Future>)>,
 }
 
 enum InFlight<F: Future> {
@@ -124,6 +127,7 @@ impl<P, T, B, S> super::advanced::Dispatch for Dispatch<S, T, P> where
     type BodyIn = P::ResponseBody;
     type Out = P::Request;
     type BodyOut = P::RequestBody;
+    type RID = P::RequestId;
     type Error = P::Error;
     type Stream = B;
     type Transport = P::Transport;
@@ -132,7 +136,7 @@ impl<P, T, B, S> super::advanced::Dispatch for Dispatch<S, T, P> where
         &mut self.transport
     }
 
-    fn poll(&mut self) -> Poll<Option<MultiplexMessage<Self::In, B, Self::Error>>, io::Error> {
+    fn poll(&mut self) -> Poll<Option<MultiplexMessage<Self::RID, Self::In, B, Self::Error>>, io::Error> {
         trace!("Dispatch::poll");
 
         let mut idx = None;
@@ -158,7 +162,7 @@ impl<P, T, B, S> super::advanced::Dispatch for Dispatch<S, T, P> where
         }
     }
 
-    fn dispatch(&mut self, message: MultiplexMessage<Self::Out, Body<Self::BodyOut, Self::Error>, Self::Error>) -> io::Result<()> {
+    fn dispatch(&mut self, message: MultiplexMessage<Self::RID, Self::Out, Body<Self::BodyOut, Self::Error>, Self::Error>) -> io::Result<()> {
         assert!(self.poll_ready().is_ready());
 
         let MultiplexMessage { id, message, solo } = message;
@@ -183,7 +187,7 @@ impl<P, T, B, S> super::advanced::Dispatch for Dispatch<S, T, P> where
         }
     }
 
-    fn cancel(&mut self, _request_id: RequestId) -> io::Result<()> {
+    fn cancel(&mut self, _request_id: Self::RID) -> io::Result<()> {
         // TODO: implement
         Ok(())
     }

@@ -1,12 +1,10 @@
-use super::RequestId;
-
 /// A multiplexed protocol frame
 #[derive(Debug, Clone)]
-pub enum Frame<T, B, E> {
+pub enum Frame<RId, T, B, E> {
     /// Either a request or a response.
     Message {
         /// Message exchange identifier
-        id: RequestId,
+        id: RId,
         /// The message value
         message: T,
         /// Set to true when body frames will follow with the same request ID.
@@ -18,7 +16,7 @@ pub enum Frame<T, B, E> {
     /// Body frame.
     Body {
         /// Message exchange identifier
-        id: RequestId,
+        id: RId,
         /// Body chunk. Setting to `None` indicates that the body is done
         /// streaming and there will be no further body frames sent with the
         /// given request ID.
@@ -27,15 +25,15 @@ pub enum Frame<T, B, E> {
     /// Error
     Error {
         /// Message exchange identifier
-        id: RequestId,
+        id: RId,
         /// Error value
         error: E,
     },
 }
 
-impl<T, B, E> Frame<T, B, E> {
+impl<RId: Copy, T, B, E> Frame<RId, T, B, E> {
     /// Return the request ID associated with the frame.
-    pub fn request_id(&self) -> RequestId {
+    pub fn request_id(&self) -> RId {
         match *self {
             Frame::Message { id, .. } => id,
             Frame::Body { id, .. } => id,

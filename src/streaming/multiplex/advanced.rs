@@ -12,7 +12,7 @@ use std::collections::hash_map::Entry;
 use std::collections::{HashMap, VecDeque};
 use std::io;
 use super::frame_buf::{FrameBuf, FrameDeque};
-use super::{Frame, RequestId, Transport};
+use super::{Frame, RId, Transport};
 use buffer_one::BufferOne;
 
 /*
@@ -57,19 +57,19 @@ pub struct Multiplex<T> where T: Dispatch {
     dispatch: BufferOne<DispatchSink<T>>,
 
     // Tracks in-progress exchanges
-    exchanges: HashMap<RequestId, Exchange<T>>,
+    exchanges: HashMap<T::RID, Exchange<T>>,
 
     // True when the transport is fully flushed
     is_flushed: bool,
 
     // RequestIds of exchanges that have not yet been dispatched
-    dispatch_deque: VecDeque<RequestId>,
+    dispatch_deque: VecDeque<T::RID>,
 
     // Storage for buffered frames
     frame_buf: FrameBuf<Option<Result<T::BodyOut, T::Error>>>,
 
     // Temporary storage for RequestIds...
-    scratch: Vec<RequestId>,
+    scratch: Vec<T::RID>,
 }
 
 struct DispatchSink<T> {
@@ -126,9 +126,9 @@ enum WriteState {
 }
 
 /// Message used to communicate through the multiplex dispatch
-pub struct MultiplexMessage<T, B, E> {
+pub struct MultiplexMessage<Id, T, B, E> {
     /// Request ID
-    pub id: RequestId,
+    pub id: Id,
     /// Message
     pub message: Result<Message<T, B>, E>,
     /// True if message has no pair (request / response)
@@ -152,6 +152,9 @@ pub trait Dispatch {
     /// Outbound body frame
     type BodyOut;
 
+    /// Request id type
+    type RID: RId;
+
     /// Transport error
     type Error: From<io::Error>;
 
@@ -160,23 +163,23 @@ pub trait Dispatch {
 
     /// Transport type
     type Transport: Transport<Self::BodyOut,
-                              Item = Frame<Self::Out, Self::BodyOut, Self::Error>,
-                              SinkItem = Frame<Self::In, Self::BodyIn, Self::Error>>;
+                              Item = Frame<Self::RID, Self::Out, Self::BodyOut, Self::Error>,
+                              SinkItem = Frame<Self::RID, Self::In, Self::BodyIn, Self::Error>>;
 
     /// Mutable reference to the transport
     fn transport(&mut self) -> &mut Self::Transport;
 
     /// Poll the next available message
-    fn poll(&mut self) -> Poll<Option<MultiplexMessage<Self::In, Self::Stream, Self::Error>>, io::Error>;
+    fn poll(&mut self) -> Poll<Option<MultiplexMessage<Self::RID, Self::In, Self::Stream, Self::Error>>, io::Error>;
 
     /// The `Dispatch` is ready to accept another message
     fn poll_ready(&self) -> Async<()>;
 
     /// Process an out message
-    fn dispatch(&mut self, message: MultiplexMessage<Self::Out, Body<Self::BodyOut, Self::Error>, Self::Error>) -> io::Result<()>;
+    fn dispatch(&mut self, message: MultiplexMessage<Self::RID, Self::Out, Body<Self::BodyOut, Self::Error>, Self::Error>) -> io::Result<()>;
 
     /// Cancel interest in the exchange identified by RequestId
-    fn cancel(&mut self, request_id: RequestId) -> io::Result<()>;
+    fn cancel(&mut self, request_id: Self::RID) -> io::Result<()>;
 }
 
 /*
@@ -254,7 +257,7 @@ impl<T> Multiplex<T> where T: Dispatch {
         self.scratch.clear();
 
         for (id, exchange) in self.exchanges.iter_mut() {
-            trace!("   --> request={}", id);
+            trace!("   --> request={:?}", id);
             try!(exchange.flush_out_body());
 
             // If the exchange is complete, track it for removal
@@ -265,7 +268,7 @@ impl<T> Multiplex<T> where T: Dispatch {
 
         // Purge the scratch
         for id in &self.scratch {
-            trace!("drop exchange; id={}", id);
+            trace!("drop exchange; id={:?}", id);
             self.exchanges.remove(id);
         }
 
@@ -289,7 +292,7 @@ impl<T> Multiplex<T> where T: Dispatch {
 
     /// Process outbound frame
     fn process_out_frame(&mut self,
-                         frame: Option<Frame<T::Out, T::BodyOut, T::Error>>)
+                         frame: Option<Frame<T::RID, T::Out, T::BodyOut, T::Error>>)
                          -> io::Result<()> {
         trace!("Multiplex::process_out_frame");
 
@@ -325,7 +328,7 @@ impl<T> Multiplex<T> where T: Dispatch {
 
     /// Process an outbound message
     fn process_out_message(&mut self,
-                           id: RequestId,
+                           id: T::RID,
                            message: Message<T::Out, Body<T::BodyOut, T::Error>>,
                            body: Option<mpsc::Sender<Result<T::BodyOut, T::Error>>>,
                            solo: bool)
@@ -417,7 +420,7 @@ impl<T> Multiplex<T> where T: Dispatch {
     }
 
     // Process an error
-    fn process_out_err(&mut self, id: RequestId, err: T::Error) -> io::Result<()> {
+    fn process_out_err(&mut self, id: T::RID, err: T::Error) -> io::Result<()> {
         trace!("   --> process error frame");
 
         let mut remove = false;
@@ -468,7 +471,7 @@ impl<T> Multiplex<T> where T: Dispatch {
         Ok(())
     }
 
-    fn process_out_body_chunk(&mut self, id: RequestId, chunk: Result<Option<T::BodyOut>, T::Error>) {
+    fn process_out_body_chunk(&mut self, id: T::RID, chunk: Result<Option<T::BodyOut>, T::Error>) {
         trace!("process out body chunk; id={:?}", id);
 
         {
@@ -543,7 +546,7 @@ impl<T> Multiplex<T> where T: Dispatch {
     }
 
     fn write_in_message(&mut self,
-                        id: RequestId,
+                        id: T::RID,
                         message: Message<T::In, T::Stream>,
                         solo: bool)
                         -> io::Result<()>
@@ -603,7 +606,7 @@ impl<T> Multiplex<T> where T: Dispatch {
     }
 
     fn write_in_error(&mut self,
-                      id: RequestId,
+                      id: T::RID,
                       error: T::Error)
                       -> io::Result<()>
     {
@@ -1039,9 +1042,9 @@ fn assert_send<T>(s: &mut T, item: T::SinkItem) -> Result<(), T::SinkError>
  *
  */
 
-impl<T, B, E> MultiplexMessage<T, B, E> {
+impl<Id, T, B, E> MultiplexMessage<Id, T, B, E> {
     /// Create a new MultiplexMessage
-    pub fn new(id: RequestId, message: Message<T, B>) -> MultiplexMessage<T, B, E> {
+    pub fn new(id: Id, message: Message<T, B>) -> MultiplexMessage<Id, T, B, E> {
         MultiplexMessage {
             id: id,
             message: Ok(message),
@@ -1050,7 +1053,7 @@ impl<T, B, E> MultiplexMessage<T, B, E> {
     }
 
     /// Create a new errored MultiplexMessage
-    pub fn error(id: RequestId, error: E) -> MultiplexMessage<T, B, E> {
+    pub fn error(id: Id, error: E) -> MultiplexMessage<Id, T, B, E> {
         MultiplexMessage {
             id: id,
             message: Err(error),

@@ -6,7 +6,7 @@ use simple::LiftProto;
 use std::io;
 
 use streaming::{self, Message};
-use streaming::multiplex::StreamingMultiplex;
+use streaming::multiplex::{StreamingMultiplex, Counter};
 use tokio_core::reactor::Handle;
 use tokio_service::Service;
 use futures::{stream, Stream, Sink, Future, IntoFuture, Poll};
@@ -75,11 +75,17 @@ impl<T, P> streaming::multiplex::ClientProto<T> for LiftProto<P> where
 
     type Response = P::Response;
     type ResponseBody = ();
+    type RequestId = u64;
 
     type Error = io::Error;
 
     type Transport = LiftTransport<P::Transport, io::Error>;
     type BindTransport = LiftBind<T, <P::BindTransport as IntoFuture>::Future, io::Error>;
+    type RequestIds = Counter;
+
+    fn requestid_source(&self) -> Self::RequestIds {
+        Counter::new()
+    }
 
     fn bind_transport(&self, io: T) -> Self::BindTransport {
         LiftBind::lift(ClientProto::bind_transport(self.lower(), io).into_future())

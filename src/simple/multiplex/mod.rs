@@ -41,7 +41,7 @@ mod lift {
         E: 'static,
         T: Stream<Item = (RequestId, InnerItem), Error = io::Error>,
     {
-        type Item = Frame<InnerItem, (), E>;
+        type Item = Frame<u64, InnerItem, (), E>;
         type Error = io::Error;
 
         fn poll(&mut self) -> Poll<Option<Self::Item>, io::Error> {
@@ -62,7 +62,7 @@ mod lift {
         E: 'static,
         T: Sink<SinkItem = (RequestId, InnerSink), SinkError = io::Error>
     {
-        type SinkItem = Frame<InnerSink, (), E>;
+        type SinkItem = Frame<u64, InnerSink, (), E>;
         type SinkError = io::Error;
 
         fn start_send(&mut self, request: Self::SinkItem)
