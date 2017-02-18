@@ -7,7 +7,7 @@ use super::lift::{LiftBind, LiftTransport};
 use simple::LiftProto;
 
 use streaming::{self, Message};
-use streaming::multiplex::{StreamingMultiplex, RId};
+use streaming::multiplex::{StreamingMultiplex, RequestId};
 use tokio_core::reactor::Handle;
 use tokio_service::Service;
 use futures::{stream, Stream, Sink, Future, IntoFuture, Poll};
@@ -30,7 +30,7 @@ pub trait ServerProto<T: 'static>: 'static {
     type Response: 'static;
 
     /// The type of request ids to used to correlate requests to responses
-    type RequestId: RId;
+    type RequestId: RequestId;
 
     /// The message transport, which usually take `T` as a parameter.
     ///

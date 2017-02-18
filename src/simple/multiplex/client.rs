@@ -6,7 +6,7 @@ use simple::LiftProto;
 use std::io;
 
 use streaming::{self, Message};
-use streaming::multiplex::{StreamingMultiplex, RequestIdSource, RId};
+use streaming::multiplex::{StreamingMultiplex, RequestIdSource, RequestId};
 use tokio_core::reactor::Handle;
 use tokio_service::Service;
 use futures::{stream, Stream, Sink, Future, IntoFuture, Poll};
@@ -29,7 +29,7 @@ pub trait ClientProto<T: 'static>: 'static {
     type Response: 'static;
 
     /// The type of request ids to used to correlate requests to responses
-    type RequestId: RId;
+    type RequestId: RequestId;
 
     /// The message transport, which usually take `T` as a parameter.
     ///

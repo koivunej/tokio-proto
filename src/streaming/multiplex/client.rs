@@ -1,4 +1,4 @@
-use super::{Frame, RId, RequestIdSource, StreamingMultiplex, Transport};
+use super::{Frame, RequestId, RequestIdSource, StreamingMultiplex, Transport};
 use super::advanced::{Multiplex, MultiplexMessage};
 
 use BindClient;
@@ -32,7 +32,7 @@ pub trait ClientProto<T: 'static>: 'static {
     type ResponseBody: 'static;
 
     /// The type of request ids to used to correlate requests to responses
-    type RequestId: RId;
+    type RequestId: RequestId;
 
     /// Errors, which are used both for error frames and for the service itself.
     type Error: From<io::Error> + 'static;
@@ -118,7 +118,7 @@ impl<P, T, B> super::advanced::Dispatch for Dispatch<P, T, B> where
     type BodyIn = P::RequestBody;
     type Out = P::Response;
     type BodyOut = P::ResponseBody;
-    type RID = P::RequestId;
+    type RequestId = P::RequestId;
     type Error = P::Error;
     type Stream = B;
     type Transport = P::Transport;
@@ -127,7 +127,7 @@ impl<P, T, B> super::advanced::Dispatch for Dispatch<P, T, B> where
         &mut self.transport
     }
 
-    fn dispatch(&mut self, message: MultiplexMessage<Self::RID, Self::Out, Body<Self::BodyOut, Self::Error>, Self::Error>) -> io::Result<()> {
+    fn dispatch(&mut self, message: MultiplexMessage<Self::RequestId, Self::Out, Body<Self::BodyOut, Self::Error>, Self::Error>) -> io::Result<()> {
         let MultiplexMessage { id, message, solo } = message;
 
         assert!(!solo);
@@ -141,7 +141,7 @@ impl<P, T, B> super::advanced::Dispatch for Dispatch<P, T, B> where
         Ok(())
     }
 
-    fn poll(&mut self) -> Poll<Option<MultiplexMessage<Self::RID, Self::In, B, Self::Error>>, io::Error> {
+    fn poll(&mut self) -> Poll<Option<MultiplexMessage<Self::RequestId, Self::In, B, Self::Error>>, io::Error> {
         trace!("Dispatch::poll");
         // Try to get a new request frame
         match self.requests.poll() {
@@ -182,7 +182,7 @@ impl<P, T, B> super::advanced::Dispatch for Dispatch<P, T, B> where
         Async::Ready(())
     }
 
-    fn cancel(&mut self, _request_id: Self::RID) -> io::Result<()> {
+    fn cancel(&mut self, _request_id: Self::RequestId) -> io::Result<()> {
         // TODO: implement
         Ok(())
     }

@@ -12,7 +12,7 @@ use std::collections::hash_map::Entry;
 use std::collections::{HashMap, VecDeque};
 use std::io;
 use super::frame_buf::{FrameBuf, FrameDeque};
-use super::{Frame, RId, Transport};
+use super::{Frame, RequestId, Transport};
 use buffer_one::BufferOne;
 
 /*
@@ -57,19 +57,19 @@ pub struct Multiplex<T> where T: Dispatch {
     dispatch: BufferOne<DispatchSink<T>>,
 
     // Tracks in-progress exchanges
-    exchanges: HashMap<T::RID, Exchange<T>>,
+    exchanges: HashMap<T::RequestId, Exchange<T>>,
 
     // True when the transport is fully flushed
     is_flushed: bool,
 
     // RequestIds of exchanges that have not yet been dispatched
-    dispatch_deque: VecDeque<T::RID>,
+    dispatch_deque: VecDeque<T::RequestId>,
 
     // Storage for buffered frames
     frame_buf: FrameBuf<Option<Result<T::BodyOut, T::Error>>>,
 
     // Temporary storage for RequestIds...
-    scratch: Vec<T::RID>,
+    scratch: Vec<T::RequestId>,
 }
 
 struct DispatchSink<T> {
@@ -153,7 +153,7 @@ pub trait Dispatch {
     type BodyOut;
 
     /// Request id type
-    type RID: RId;
+    type RequestId: RequestId;
 
     /// Transport error
     type Error: From<io::Error>;
@@ -162,24 +162,24 @@ pub trait Dispatch {
     type Stream: Stream<Item = Self::BodyIn, Error = Self::Error>;
 
     /// Transport type
-    type Transport: Transport<Self::RID, Self::BodyOut,
-                              Item = Frame<Self::RID, Self::Out, Self::BodyOut, Self::Error>,
-                              SinkItem = Frame<Self::RID, Self::In, Self::BodyIn, Self::Error>>;
+    type Transport: Transport<Self::RequestId, Self::BodyOut,
+                              Item = Frame<Self::RequestId, Self::Out, Self::BodyOut, Self::Error>,
+                              SinkItem = Frame<Self::RequestId, Self::In, Self::BodyIn, Self::Error>>;
 
     /// Mutable reference to the transport
     fn transport(&mut self) -> &mut Self::Transport;
 
     /// Poll the next available message
-    fn poll(&mut self) -> Poll<Option<MultiplexMessage<Self::RID, Self::In, Self::Stream, Self::Error>>, io::Error>;
+    fn poll(&mut self) -> Poll<Option<MultiplexMessage<Self::RequestId, Self::In, Self::Stream, Self::Error>>, io::Error>;
 
     /// The `Dispatch` is ready to accept another message
     fn poll_ready(&self) -> Async<()>;
 
     /// Process an out message
-    fn dispatch(&mut self, message: MultiplexMessage<Self::RID, Self::Out, Body<Self::BodyOut, Self::Error>, Self::Error>) -> io::Result<()>;
+    fn dispatch(&mut self, message: MultiplexMessage<Self::RequestId, Self::Out, Body<Self::BodyOut, Self::Error>, Self::Error>) -> io::Result<()>;
 
     /// Cancel interest in the exchange identified by RequestId
-    fn cancel(&mut self, request_id: Self::RID) -> io::Result<()>;
+    fn cancel(&mut self, request_id: Self::RequestId) -> io::Result<()>;
 }
 
 /*
@@ -292,7 +292,7 @@ impl<T> Multiplex<T> where T: Dispatch {
 
     /// Process outbound frame
     fn process_out_frame(&mut self,
-                         frame: Option<Frame<T::RID, T::Out, T::BodyOut, T::Error>>)
+                         frame: Option<Frame<T::RequestId, T::Out, T::BodyOut, T::Error>>)
                          -> io::Result<()> {
         trace!("Multiplex::process_out_frame");
 
@@ -328,7 +328,7 @@ impl<T> Multiplex<T> where T: Dispatch {
 
     /// Process an outbound message
     fn process_out_message(&mut self,
-                           id: T::RID,
+                           id: T::RequestId,
                            message: Message<T::Out, Body<T::BodyOut, T::Error>>,
                            body: Option<mpsc::Sender<Result<T::BodyOut, T::Error>>>,
                            solo: bool)
@@ -420,7 +420,7 @@ impl<T> Multiplex<T> where T: Dispatch {
     }
 
     // Process an error
-    fn process_out_err(&mut self, id: T::RID, err: T::Error) -> io::Result<()> {
+    fn process_out_err(&mut self, id: T::RequestId, err: T::Error) -> io::Result<()> {
         trace!("   --> process error frame");
 
         let mut remove = false;
@@ -471,7 +471,7 @@ impl<T> Multiplex<T> where T: Dispatch {
         Ok(())
     }
 
-    fn process_out_body_chunk(&mut self, id: T::RID, chunk: Result<Option<T::BodyOut>, T::Error>) {
+    fn process_out_body_chunk(&mut self, id: T::RequestId, chunk: Result<Option<T::BodyOut>, T::Error>) {
         trace!("process out body chunk; id={:?}", id);
 
         {
@@ -546,7 +546,7 @@ impl<T> Multiplex<T> where T: Dispatch {
     }
 
     fn write_in_message(&mut self,
-                        id: T::RID,
+                        id: T::RequestId,
                         message: Message<T::In, T::Stream>,
                         solo: bool)
                         -> io::Result<()>
@@ -606,7 +606,7 @@ impl<T> Multiplex<T> where T: Dispatch {
     }
 
     fn write_in_error(&mut self,
-                      id: T::RID,
+                      id: T::RequestId,
                       error: T::Error)
                       -> io::Result<()>
     {

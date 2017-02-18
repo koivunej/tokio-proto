@@ -1,4 +1,4 @@
-use super::{Frame, RId, Transport};
+use super::{Frame, RequestId, Transport};
 use super::advanced::{Multiplex, MultiplexMessage};
 
 use BindServer;
@@ -49,7 +49,7 @@ pub trait ServerProto<T: 'static>: 'static {
     type ResponseBody: 'static;
 
     /// The type of request ids to used to correlate requests to responses
-    type RequestId: RId + 'static;
+    type RequestId: RequestId;
 
     /// Errors, which are used both for error frames and for the service itself.
     type Error: From<io::Error> + 'static;
@@ -127,7 +127,7 @@ impl<P, T, B, S> super::advanced::Dispatch for Dispatch<S, T, P> where
     type BodyIn = P::ResponseBody;
     type Out = P::Request;
     type BodyOut = P::RequestBody;
-    type RID = P::RequestId;
+    type RequestId = P::RequestId;
     type Error = P::Error;
     type Stream = B;
     type Transport = P::Transport;
@@ -136,7 +136,7 @@ impl<P, T, B, S> super::advanced::Dispatch for Dispatch<S, T, P> where
         &mut self.transport
     }
 
-    fn poll(&mut self) -> Poll<Option<MultiplexMessage<Self::RID, Self::In, B, Self::Error>>, io::Error> {
+    fn poll(&mut self) -> Poll<Option<MultiplexMessage<Self::RequestId, Self::In, B, Self::Error>>, io::Error> {
         trace!("Dispatch::poll");
 
         let mut idx = None;
@@ -162,7 +162,7 @@ impl<P, T, B, S> super::advanced::Dispatch for Dispatch<S, T, P> where
         }
     }
 
-    fn dispatch(&mut self, message: MultiplexMessage<Self::RID, Self::Out, Body<Self::BodyOut, Self::Error>, Self::Error>) -> io::Result<()> {
+    fn dispatch(&mut self, message: MultiplexMessage<Self::RequestId, Self::Out, Body<Self::BodyOut, Self::Error>, Self::Error>) -> io::Result<()> {
         assert!(self.poll_ready().is_ready());
 
         let MultiplexMessage { id, message, solo } = message;
@@ -187,7 +187,7 @@ impl<P, T, B, S> super::advanced::Dispatch for Dispatch<S, T, P> where
         }
     }
 
-    fn cancel(&mut self, _request_id: Self::RID) -> io::Result<()> {
+    fn cancel(&mut self, _request_id: Self::RequestId) -> io::Result<()> {
         // TODO: implement
         Ok(())
     }

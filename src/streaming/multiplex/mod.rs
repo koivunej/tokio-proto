@@ -19,16 +19,12 @@ pub use self::server::ServerProto;
 mod frame;
 pub use self::frame::Frame;
 
-
 pub mod advanced;
 
 /// Identifies a request / response thread
-pub type RequestId = u64;
+pub trait RequestId: Copy + Hash + Eq + Debug + 'static {}
 
-/// WIP RequestId abstraction
-pub trait RId: Copy + Hash + Eq + Debug + 'static {}
-
-impl<T: Copy + Hash + Eq + Debug + 'static> RId for T {}
+impl<T: Copy + Hash + Eq + Debug + 'static> RequestId for T {}
 
 /// `RequestIdSource` is used to generate at minimum session-wide unique identifiers of type `RId`.
 /// Uniqueness needs depend on the application and can be wider than single session.
