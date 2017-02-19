@@ -262,7 +262,7 @@ impl<T> Multiplex<T> where T: Dispatch {
 
             // If the exchange is complete, track it for removal
             if exchange.is_complete() {
-                self.scratch.push(*id);
+                self.scratch.push(id.clone());
             }
         }
 
@@ -336,7 +336,7 @@ impl<T> Multiplex<T> where T: Dispatch {
     {
         trace!("   --> process message; body={:?}", body.is_some());
 
-        match self.exchanges.entry(id) {
+        match self.exchanges.entry(id.clone()) {
             Entry::Occupied(mut e) => {
                 assert!(!e.get().responded, "invalid exchange state");
                 assert!(e.get().is_inbound());
@@ -441,7 +441,7 @@ impl<T> Multiplex<T> where T: Dispatch {
                 // The downstream dispatch has not provided a response to the
                 // exchange, indicate that interest has been canceled.
                 if !exchange.responded {
-                    try!(self.dispatch.get_mut().inner.cancel(id));
+                    try!(self.dispatch.get_mut().inner.cancel(id.clone()));
                 }
 
                 remove = exchange.is_complete();
@@ -449,7 +449,7 @@ impl<T> Multiplex<T> where T: Dispatch {
                 if !exchange.responded {
                     // A response has not been provided yet, send the error via
                     // the dispatch
-                    try!(self.dispatch.get_mut().inner.dispatch(MultiplexMessage::error(id, err)));
+                    try!(self.dispatch.get_mut().inner.dispatch(MultiplexMessage::error(id.clone(), err)));
 
                     exchange.responded = true;
                 } else {
@@ -558,7 +558,7 @@ impl<T> Multiplex<T> where T: Dispatch {
 
         // Create the frame
         let frame = Frame::Message {
-            id: id,
+            id: id.clone(),
             message: message,
             body: body.is_some(),
             solo: solo,
@@ -610,7 +610,7 @@ impl<T> Multiplex<T> where T: Dispatch {
                       error: T::Error)
                       -> io::Result<()>
     {
-        if let Entry::Occupied(mut e) = self.exchanges.entry(id) {
+        if let Entry::Occupied(mut e) = self.exchanges.entry(id.clone()) {
             assert!(!e.get().responded, "exchange already responded");
 
             // TODO: should the outbound body be canceled? In theory, if the
@@ -642,7 +642,7 @@ impl<T> Multiplex<T> where T: Dispatch {
 
         // Now, write the ready streams
         'outer:
-        for (&id, exchange) in &mut self.exchanges {
+        for (id, exchange) in &mut self.exchanges {
             trace!("   --> checking request {:?}", id);
 
             loop {
@@ -651,6 +651,8 @@ impl<T> Multiplex<T> where T: Dispatch {
                     self.blocked_on_flush.transport_not_write_ready();
                     break 'outer;
                 }
+
+                let id = id.clone();
 
                 match exchange.try_poll_in_body() {
                     Ok(Async::Ready(Some(chunk))) => {
@@ -695,7 +697,7 @@ impl<T> Multiplex<T> where T: Dispatch {
             }
 
             if exchange.is_complete() {
-                self.scratch.push(id);
+                self.scratch.push(id.clone());
             }
         }
 

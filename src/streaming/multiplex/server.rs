@@ -141,7 +141,7 @@ impl<P, T, B, S> super::advanced::Dispatch for Dispatch<S, T, P> where
 
         let mut idx = None;
 
-        for (i, &mut (request_id, ref mut slot)) in self.in_flight.iter_mut().enumerate() {
+        for (i, &mut (ref request_id, ref mut slot)) in self.in_flight.iter_mut().enumerate() {
             trace!("   --> poll; request_id={:?}", request_id);
             if slot.poll() && idx.is_none() {
                 idx = Some(i);

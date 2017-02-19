@@ -153,7 +153,7 @@ impl<P, T, B> super::advanced::Dispatch for Dispatch<P, T, B> where
                 trace!("   --> assigning request-id={:?}", request_id);
 
                 // Track complete handle
-                self.in_flight.insert(request_id, complete);
+                self.in_flight.insert(request_id.clone() , complete);
 
                 Ok(Async::Ready(Some(MultiplexMessage::new(request_id, request))))
 
