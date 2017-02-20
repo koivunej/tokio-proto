@@ -26,8 +26,8 @@ pub trait RequestId: Clone + Hash + Eq + Debug + 'static {}
 
 impl<T: Clone + Hash + Eq + Debug + 'static> RequestId for T {}
 
-/// `RequestIdSource` is used to generate at minimum session-wide unique identifiers of type `RId`.
-/// Uniqueness needs depend on the application and can be wider than single session.
+/// `RequestIdSource` is used to generate at minimum session-wide unique identifiers of type
+/// `RequestId`. Uniqueness needs depend on the application and can be wider than single session.
 ///
 /// Depending on the protocol the identifier can be generated or embedded in the message `T`.
 pub trait RequestIdSource<Id, T>: 'static {
@@ -63,7 +63,7 @@ pub struct StreamingMultiplex<B>(B);
 /// Additional transport details relevant to streaming, multiplexed protocols.
 ///
 /// All methods added in this trait have default implementations.
-pub trait Transport<RID, ReadBody>: 'static +
+pub trait Transport<RequestId, ReadBody>: 'static +
     Stream<Error = io::Error> +
     Sink<SinkError = io::Error>
 {
@@ -75,24 +75,24 @@ pub trait Transport<RID, ReadBody>: 'static +
     fn tick(&mut self) {}
 
     /// Cancel interest in the exchange identified by RequestId
-    fn cancel(&mut self, request_id: RID) -> io::Result<()> {
+    fn cancel(&mut self, request_id: RequestId) -> io::Result<()> {
         drop(request_id);
         Ok(())
     }
 
     /// Tests to see if this I/O object may accept a body frame for the given
     /// request ID
-    fn poll_write_body(&mut self, id: RID) -> Async<()> {
+    fn poll_write_body(&mut self, id: RequestId) -> Async<()> {
         drop(id);
         Async::Ready(())
     }
 
     /// Invoked before the multiplexer dispatches the body chunk to the body
     /// stream.
-    fn dispatching_body(&mut self, id: RID, body: &ReadBody) {
+    fn dispatching_body(&mut self, id: RequestId, body: &ReadBody) {
         drop(id);
         drop(body);
     }
 }
 
-impl<T:Io + 'static, C: Codec + 'static, RID, ReadBody> Transport<RID, ReadBody> for Framed<T,C> {}
+impl<T:Io + 'static, C: Codec + 'static, RequestId, ReadBody> Transport<RequestId, ReadBody> for Framed<T,C> {}
