@@ -49,7 +49,7 @@ fn test_immediate_writable_echo() {
     mock.send(msg(0, "hello"));
 
     let wr = mock.next_write();
-    assert_eq!(wr.request_id(), 0);
+    assert_eq!(wr.request_id(), &0);
     assert_eq!(wr.unwrap_msg(), "goodbye");
 
     mock.allow_and_assert_drop();
@@ -72,7 +72,7 @@ fn test_immediate_writable_delayed_response_echo() {
     c.complete(Ok(Message::WithoutBody("goodbye")));
 
     let wr = mock.next_write();
-    assert_eq!(wr.request_id(), 0);
+    assert_eq!(wr.request_id(), &0);
     assert_eq!(wr.unwrap_msg(), "goodbye");
 
     mock.allow_and_assert_drop();
@@ -91,7 +91,7 @@ fn test_delayed_writable_immediate_response_echo() {
     thread::sleep(Duration::from_millis(20));
 
     let wr = mock.next_write();
-    assert_eq!(wr.request_id(), 0);
+    assert_eq!(wr.request_id(), &0);
     assert_eq!(wr.unwrap_msg(), "goodbye");
 }
 
@@ -126,15 +126,15 @@ fn test_same_order_multiplexing() {
     c3.complete(Ok(Message::WithoutBody("three")));
 
     let wr = mock.next_write();
-    assert_eq!(0, wr.request_id());
+    assert_eq!(&0, wr.request_id());
     assert_eq!("one", wr.unwrap_msg());
 
     let wr = mock.next_write();
-    assert_eq!(1, wr.request_id());
+    assert_eq!(&1, wr.request_id());
     assert_eq!("two", wr.unwrap_msg());
 
     let wr = mock.next_write();
-    assert_eq!(2, wr.request_id());
+    assert_eq!(&2, wr.request_id());
     assert_eq!("three", wr.unwrap_msg());
 }
 
@@ -163,20 +163,20 @@ fn test_out_of_order_multiplexing() {
     c3.complete(Ok(Message::WithoutBody("three")));
 
     let wr = mock.next_write();
-    assert_eq!(2, wr.request_id());
+    assert_eq!(&2, wr.request_id());
     assert_eq!("three", wr.unwrap_msg());
 
     c2.complete(Ok(Message::WithoutBody("two")));
 
     let wr = mock.next_write();
-    assert_eq!(1, wr.request_id());
+    assert_eq!(&1, wr.request_id());
     assert_eq!("two", wr.unwrap_msg());
 
 
     c1.complete(Ok(Message::WithoutBody("one")));
 
     let wr = mock.next_write();
-    assert_eq!(0, wr.request_id());
+    assert_eq!(&0, wr.request_id());
     assert_eq!("one", wr.unwrap_msg());
 }
 
@@ -262,7 +262,7 @@ fn test_reaching_max_in_flight_requests() {
 
     // Read the response
     let wr = mock.next_write();
-    assert_eq!(i, wr.request_id());
+    assert_eq!(&i, wr.request_id());
     assert_eq!("zomg", wr.unwrap_msg());
 
     // Next request is processed
@@ -275,7 +275,7 @@ fn test_reaching_max_in_flight_requests() {
         c.complete((Ok(Message::WithoutBody("zomg"))));
 
         let wr = mock.next_write();
-        assert_eq!(i, wr.request_id());
+        assert_eq!(&i, wr.request_id());
         assert_eq!("zomg", wr.unwrap_msg());
     }
 
@@ -299,25 +299,25 @@ fn test_basic_streaming_response_body() {
     mock.send(msg(3, "want-body"));
 
     let wr = mock.next_write();
-    assert_eq!(3, wr.request_id());
+    assert_eq!(&3, wr.request_id());
     assert_eq!(wr.unwrap_msg(), "hi2u");
 
     // Allow the write, then send the message
     let tx = tx.send(Ok(1)).wait().unwrap();
     let wr = mock.next_write();
-    assert_eq!(3, wr.request_id());
+    assert_eq!(&3, wr.request_id());
     assert_eq!(Some(1), wr.unwrap_body());
 
     // Send the message then allow the write
     let tx = tx.send(Ok(2)).wait().ok().unwrap();
     let wr = mock.next_write();
-    assert_eq!(3, wr.request_id());
+    assert_eq!(&3, wr.request_id());
     assert_eq!(Some(2), wr.unwrap_body());
 
     drop(tx);
 
     let wr = mock.next_write();
-    assert_eq!(3, wr.request_id());
+    assert_eq!(&3, wr.request_id());
     assert_eq!(None, wr.unwrap_body());
 
     // Alright, clean shutdown
@@ -358,7 +358,7 @@ fn test_basic_streaming_request_body_read_then_respond() {
     mock.send(Frame::Body { id: 2, chunk: None });
 
     let wr = mock.next_write();
-    assert_eq!(2, wr.request_id());
+    assert_eq!(&2, wr.request_id());
     assert_eq!("hi2u", wr.unwrap_msg());
 
     // Clean shutdown
@@ -412,13 +412,13 @@ fn test_interleaving_request_body_chunks() {
     mock.send(Frame::Body { id: 2, chunk: None });
 
     let wr = mock.next_write();
-    assert_eq!(2, wr.request_id());
+    assert_eq!(&2, wr.request_id());
     assert_eq!("hi2u", wr.unwrap_msg());
 
     mock.send(Frame::Body { id: 4, chunk: None });
 
     let wr = mock.next_write();
-    assert_eq!(4, wr.request_id());
+    assert_eq!(&4, wr.request_id());
     assert_eq!("hi2u", wr.unwrap_msg());
 
     // Clean shutdown

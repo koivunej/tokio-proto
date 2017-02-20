@@ -31,13 +31,13 @@ pub enum Frame<RequestId, T, B, E> {
     },
 }
 
-impl<RequestId: Copy, T, B, E> Frame<RequestId, T, B, E> {
+impl<RequestId: Clone, T, B, E> Frame<RequestId, T, B, E> {
     /// Return the request ID associated with the frame.
-    pub fn request_id(&self) -> RequestId {
+    pub fn request_id(&self) -> &RequestId {
         match *self {
-            Frame::Message { id, .. } => id,
-            Frame::Body { id, .. } => id,
-            Frame::Error { id, .. } => id,
+            Frame::Message { ref id, .. } => id,
+            Frame::Body { ref id, .. } => id,
+            Frame::Error { ref id, .. } => id,
         }
     }
 
