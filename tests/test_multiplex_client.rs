@@ -27,7 +27,7 @@ fn test_ping_pong_close() {
 
     let pong = service.call(Message::WithoutBody("ping"));
     let wr = mock.next_write();
-    assert_eq!(0, wr.request_id());
+    assert_eq!(&0, wr.request_id());
     assert_eq!("ping", wr.unwrap_msg());
 
     mock.send(msg(0, "pong"));
@@ -43,7 +43,7 @@ fn test_error_on_response() {
     let pong = service.call(Message::WithoutBody("ping"));
 
     let wr = mock.next_write();
-    assert_eq!(0, wr.request_id());
+    assert_eq!(&0, wr.request_id());
     assert_eq!("ping", wr.unwrap_msg());
 
     mock.send(Frame::Error {
@@ -63,7 +63,7 @@ fn drop_client_while_streaming_body() {
     let pong = service.call(Message::WithoutBody("ping"));
 
     let wr = mock.next_write();
-    assert_eq!(0, wr.request_id());
+    assert_eq!(&0, wr.request_id());
     assert_eq!("ping", wr.unwrap_msg());
 
     mock.send(msg_with_body(0, "pong"));
