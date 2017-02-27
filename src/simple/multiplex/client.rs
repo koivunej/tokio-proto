@@ -46,11 +46,11 @@ pub trait ClientProto<T: 'static>: 'static {
     type BindTransport: IntoFuture<Item = Self::Transport, Error = io::Error>;
 
     /// The `RequestIdSource` to use.
-    type RequestIds: RequestIdSource<Self::RequestId, Self::Request>;
+    type RequestIdSource: RequestIdSource<Self::RequestId, Self::Request>;
 
     /// Create a `RequestIdSource` to generate ids for requests, used both on the wire and
     /// internally to correlate responses to requests.
-    fn requestid_source(&self) -> Self::RequestIds;
+    fn requestid_source(&self) -> Self::RequestIdSource;
 
     /// Build a transport from the given I/O object, using `self` for any
     /// configuration.
@@ -91,9 +91,9 @@ impl<T, P> streaming::multiplex::ClientProto<T> for LiftProto<P> where
 
     type Transport = LiftTransport<P::Transport, io::Error>;
     type BindTransport = LiftBind<T, <P::BindTransport as IntoFuture>::Future, io::Error>;
-    type RequestIds = P::RequestIds;
+    type RequestIdSource = P::RequestIdSource;
 
-    fn requestid_source(&self) -> Self::RequestIds {
+    fn requestid_source(&self) -> Self::RequestIdSource {
         P::requestid_source(self.lower())
     }
 

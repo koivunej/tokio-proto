@@ -49,11 +49,11 @@ pub trait ClientProto<T: 'static>: 'static {
     type BindTransport: IntoFuture<Item = Self::Transport, Error = io::Error>;
 
     /// Type of the `RequestIdSource` to use.
-    type RequestIds: RequestIdSource<Self::RequestId, Self::Request>;
+    type RequestIdSource: RequestIdSource<Self::RequestId, Self::Request>;
 
     /// Create a `RequestIdSource` to generate ids for requests, used both on the wire and
     /// internally to correlate responses to requests.
-    fn requestid_source(&self) -> Self::RequestIds;
+    fn requestid_source(&self) -> Self::RequestIdSource;
 
     /// Build a transport from the given I/O object, using `self` for any
     /// configuration.
@@ -105,7 +105,7 @@ struct Dispatch<P, T, B> where
     transport: P::Transport,
     requests: Receiver<P::ServiceRequest, P::ServiceResponse, P::Error>,
     in_flight: HashMap<P::RequestId, Complete<Result<P::ServiceResponse, P::Error>>>,
-    rid_src: P::RequestIds,
+    rid_src: P::RequestIdSource,
 }
 
 impl<P, T, B> super::advanced::Dispatch for Dispatch<P, T, B> where

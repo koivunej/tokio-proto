@@ -56,9 +56,9 @@ impl<T, U, I> multiplex::ClientProto<I> for MockProtocol<multiplex::Frame<u64, T
     type Error = io::Error;
     type Transport = MockTransport<multiplex::Frame<u64, T, U, io::Error>>;
     type BindTransport = Result<Self::Transport, io::Error>;
-    type RequestIds = Counter;
+    type RequestIdSource = Counter;
 
-    fn requestid_source(&self) -> Self::RequestIds {
+    fn requestid_source(&self) -> Self::RequestIdSource {
         Counter::new()
     }
 
