@@ -1,12 +1,12 @@
 use BindClient;
-use super::Multiplex;
+use super::{Multiplex, RequestIdSource, RequestId};
 use super::lift::{LiftBind, LiftTransport};
 use simple::LiftProto;
 
 use std::io;
 
 use streaming::{self, Message};
-use streaming::multiplex::{StreamingMultiplex, RequestIdSource, RequestId};
+use streaming::multiplex::StreamingMultiplex;
 use tokio_core::reactor::Handle;
 use tokio_service::Service;
 use futures::{stream, Stream, Sink, Future, IntoFuture, Poll};

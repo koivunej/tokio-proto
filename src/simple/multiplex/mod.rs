@@ -9,6 +9,8 @@ pub use self::client::ClientService;
 mod server;
 pub use self::server::ServerProto;
 
+pub use streaming::multiplex::{RequestIdSource, RequestId};
+
 /// A marker used to flag protocols as being multiplexed RPC.
 ///
 /// This is an implementation detail; to actually implement a protocol,
