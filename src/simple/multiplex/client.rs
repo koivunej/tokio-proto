@@ -1,5 +1,5 @@
 use BindClient;
-use super::{RequestId, Multiplex};
+use super::{Multiplex, NewRequestIdSource, RequestId};
 use super::lift::{LiftBind, LiftTransport};
 use simple::LiftProto;
 
@@ -28,14 +28,17 @@ pub trait ClientProto<T: 'static>: 'static {
     /// Response messages.
     type Response: 'static;
 
+    /// The type of request ids to used to correlate requests to responses
+    type RequestId: RequestId + NewRequestIdSource<Self::RequestId, Self::Request>;
+
     /// The message transport, which usually take `T` as a parameter.
     ///
     /// An easy way to build a transport is to use `tokio_core::io::Framed`
     /// together with a `Codec`; in that case, the transport type is
     /// `Framed<T, YourCodec>`. See the crate docs for an example.
     type Transport: 'static +
-        Stream<Item = (RequestId, Self::Response), Error = io::Error> +
-        Sink<SinkItem = (RequestId, Self::Request), SinkError = io::Error>;
+        Stream<Item = (Self::RequestId, Self::Response), Error = io::Error> +
+        Sink<SinkItem = (Self::RequestId, Self::Request), SinkError = io::Error>;
 
     /// A future for initializing a transport from an I/O object.
     ///
@@ -75,6 +78,7 @@ impl<T, P> streaming::multiplex::ClientProto<T> for LiftProto<P> where
 
     type Response = P::Response;
     type ResponseBody = ();
+    type RequestId = P::RequestId;
 
     type Error = io::Error;
 

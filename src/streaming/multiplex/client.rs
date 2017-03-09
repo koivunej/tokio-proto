@@ -1,4 +1,4 @@
-use super::{Frame, RequestId, StreamingMultiplex, Transport};
+use super::{Frame, RequestId, RequestIdSource, NewRequestIdSource, StreamingMultiplex, Transport};
 use super::advanced::{Multiplex, MultiplexMessage};
 
 use BindClient;
@@ -31,14 +31,17 @@ pub trait ClientProto<T: 'static>: 'static {
     /// Response body chunks.
     type ResponseBody: 'static;
 
+    /// The type of request ids to used to correlate requests to responses
+    type RequestId: RequestId + NewRequestIdSource<Self::RequestId, Self::Request>;
+
     /// Errors, which are used both for error frames and for the service itself.
     type Error: From<io::Error> + 'static;
 
     /// The frame transport, which usually take `T` as a parameter.
     type Transport:
-        Transport<Self::ResponseBody,
-                  Item = Frame<Self::Response, Self::ResponseBody, Self::Error>,
-                  SinkItem = Frame<Self::Request, Self::RequestBody, Self::Error>>;
+        Transport<Self::RequestId, Self::ResponseBody,
+                  Item = Frame<Self::RequestId, Self::Response, Self::ResponseBody, Self::Error>,
+                  SinkItem = Frame<Self::RequestId, Self::Request, Self::RequestBody, Self::Error>>;
 
     /// A future for initializing a transport from an I/O object.
     ///
@@ -64,12 +67,14 @@ impl<P, T, B> BindClient<StreamingMultiplex<B>, T> for P where
     fn bind_client(&self, handle: &Handle, io: T) -> Self::BindClient {
         let (client, rx) = client_proxy::pair();
 
+        let rid_src = P::RequestId::requestid_source();
+
         let task = self.bind_transport(io).into_future().and_then(|transport| {
             let dispatch: Dispatch<P, T, B> = Dispatch {
                 transport: transport,
                 requests: rx,
                 in_flight: HashMap::new(),
-                next_request_id: 0,
+                rid_src: rid_src,
             };
             Multiplex::new(dispatch)
         }).map_err(|e| {
@@ -92,8 +97,8 @@ struct Dispatch<P, T, B> where
 {
     transport: P::Transport,
     requests: Receiver<P::ServiceRequest, P::ServiceResponse, P::Error>,
-    in_flight: HashMap<RequestId, oneshot::Sender<Result<P::ServiceResponse, P::Error>>>,
-    next_request_id: u64,
+    in_flight: HashMap<P::RequestId, oneshot::Sender<Result<P::ServiceResponse, P::Error>>>,
+    rid_src: <P::RequestId as NewRequestIdSource<P::RequestId, P::Request>>::RequestIdSource,
 }
 
 impl<P, T, B> super::advanced::Dispatch for Dispatch<P, T, B> where
@@ -106,15 +111,16 @@ impl<P, T, B> super::advanced::Dispatch for Dispatch<P, T, B> where
     type BodyIn = P::RequestBody;
     type Out = P::Response;
     type BodyOut = P::ResponseBody;
+    type RequestId = P::RequestId;
     type Error = P::Error;
     type Stream = B;
-        type Transport = P::Transport;
+    type Transport = P::Transport;
 
     fn transport(&mut self) -> &mut Self::Transport {
         &mut self.transport
     }
 
-    fn dispatch(&mut self, message: MultiplexMessage<Self::Out, Body<Self::BodyOut, Self::Error>, Self::Error>) -> io::Result<()> {
+    fn dispatch(&mut self, message: MultiplexMessage<Self::RequestId, Self::Out, Body<Self::BodyOut, Self::Error>, Self::Error>) -> io::Result<()> {
         let MultiplexMessage { id, message, solo } = message;
 
         assert!(!solo);
@@ -128,20 +134,19 @@ impl<P, T, B> super::advanced::Dispatch for Dispatch<P, T, B> where
         Ok(())
     }
 
-    fn poll(&mut self) -> Poll<Option<MultiplexMessage<Self::In, B, Self::Error>>, io::Error> {
+    fn poll(&mut self) -> Poll<Option<MultiplexMessage<Self::RequestId, Self::In, B, Self::Error>>, io::Error> {
         trace!("Dispatch::poll");
         // Try to get a new request frame
         match self.requests.poll() {
             Ok(Async::Ready(Some(Ok((request, complete))))) => {
                 trace!("   --> received request");
 
-                let request_id = self.next_request_id;
-                self.next_request_id += 1;
+                let request_id = self.rid_src.next(&request);
 
                 trace!("   --> assigning request-id={:?}", request_id);
 
                 // Track complete handle
-                self.in_flight.insert(request_id, complete);
+                self.in_flight.insert(request_id.clone() , complete);
 
                 Ok(Async::Ready(Some(MultiplexMessage::new(request_id, request))))
 
@@ -170,7 +175,7 @@ impl<P, T, B> super::advanced::Dispatch for Dispatch<P, T, B> where
         Async::Ready(())
     }
 
-    fn cancel(&mut self, _request_id: RequestId) -> io::Result<()> {
+    fn cancel(&mut self, _request_id: Self::RequestId) -> io::Result<()> {
         // TODO: implement
         Ok(())
     }

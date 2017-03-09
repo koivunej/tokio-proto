@@ -3,6 +3,8 @@
 //! See the crate-level docs for an overview.
 
 use std::io;
+use std::hash::Hash;
+use std::fmt::Debug;
 use futures::{Stream, Sink, Async};
 use tokio_core::io as old_io;
 use tokio_io as new_io;
@@ -18,11 +20,63 @@ pub use self::server::ServerProto;
 mod frame;
 pub use self::frame::Frame;
 
-
 pub mod advanced;
 
 /// Identifies a request / response thread
-pub type RequestId = u64;
+pub trait RequestId: Clone + Hash + Eq + Debug + 'static {}
+
+impl<T: Clone + Hash + Eq + Debug + 'static> RequestId for T {}
+
+/// Factory of `RequestIdSource` for the given `RequestId` and request type `T`.
+/// This has been implemented for `u64` with `Counter`.
+///
+/// In order to use a custom `RequestIdSource` with u64, you must wrap the `u64`
+/// in a newtype, then implement this trait for the newtype with the correct
+/// `RequestIdSource`.
+pub trait NewRequestIdSource<Id: RequestId, T: 'static> {
+    /// Concrete type of the RequestIdSource
+    type RequestIdSource: RequestIdSource<Id, T>;
+
+    /// Returns a new `RequestIdSource`.
+    fn requestid_source() -> Self::RequestIdSource;
+}
+
+/// `RequestIdSource` is used to generate at minimum session-wide unique identifiers of type
+/// `RequestId`. Uniqueness needs depend on the application and can be wider than single session.
+///
+/// Depending on the protocol the identifier can be generated or embedded in the message `T`.
+pub trait RequestIdSource<Id, T>: 'static {
+    /// Generate the next request id or look it up from the message
+    fn next(&mut self, msg: &T) -> Id;
+}
+
+/// `RequestIdSource` generated from by an u64 counter
+#[derive(Debug)]
+pub struct Counter(u64);
+
+impl Counter {
+    /// Initialize the counter with value 0
+    pub fn new() -> Self {
+        Counter(0)
+    }
+}
+
+impl<T: 'static> NewRequestIdSource<u64, T> for u64 {
+    type RequestIdSource = Counter;
+
+    fn requestid_source() -> Self::RequestIdSource {
+        Counter::new()
+    }
+}
+
+impl<T> RequestIdSource<u64, T> for Counter {
+    fn next(&mut self, _: &T) -> u64 {
+        let ret = self.0;
+        self.0 += 1;
+        ret
+    }
+}
+
 
 /// A marker used to flag protocols as being streaming and multiplexed.
 ///
@@ -34,7 +88,7 @@ pub struct StreamingMultiplex<B>(B);
 /// Additional transport details relevant to streaming, multiplexed protocols.
 ///
 /// All methods added in this trait have default implementations.
-pub trait Transport<ReadBody>: 'static +
+pub trait Transport<RequestId, ReadBody>: 'static +
     Stream<Error = io::Error> +
     Sink<SinkError = io::Error>
 {
@@ -66,12 +120,12 @@ pub trait Transport<ReadBody>: 'static +
     }
 }
 
-impl<T, C, ReadBody> Transport<ReadBody> for old_io::Framed<T,C>
+impl<T, C, RequestId, ReadBody> Transport<RequestId, ReadBody> for old_io::Framed<T,C>
     where T: old_io::Io + 'static,
           C: old_io::Codec + 'static,
 {}
 
-impl<T, C, ReadBody> Transport<ReadBody> for new_io::codec::Framed<T,C>
+impl<T, C, RequestId, ReadBody> Transport<RequestId, ReadBody> for new_io::codec::Framed<T,C>
     where T: new_io::AsyncRead + new_io::AsyncWrite + 'static,
           C: new_io::codec::Encoder<Error=io::Error> +
                 new_io::codec::Decoder<Error=io::Error> + 'static,

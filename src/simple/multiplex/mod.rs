@@ -9,8 +9,7 @@ pub use self::client::ClientService;
 mod server;
 pub use self::server::ServerProto;
 
-/// Identifies a request / response thread
-pub type RequestId = u64;
+pub use streaming::multiplex::{NewRequestIdSource, RequestIdSource, RequestId};
 
 /// A marker used to flag protocols as being multiplexed RPC.
 ///
@@ -25,7 +24,6 @@ mod lift {
     use std::io;
     use std::marker::PhantomData;
 
-    use super::RequestId;
     use streaming::multiplex::{Frame, Transport};
     use futures::{Future, Stream, Sink, StartSend, Poll, Async, AsyncSink};
 
@@ -38,11 +36,11 @@ mod lift {
         marker: PhantomData<(A, E)>,
     }
 
-    impl<T, InnerItem, E> Stream for LiftTransport<T, E> where
+    impl<T, RequestId, InnerItem, E> Stream for LiftTransport<T, E> where
         E: 'static,
         T: Stream<Item = (RequestId, InnerItem), Error = io::Error>,
     {
-        type Item = Frame<InnerItem, (), E>;
+        type Item = Frame<RequestId, InnerItem, (), E>;
         type Error = io::Error;
 
         fn poll(&mut self) -> Poll<Option<Self::Item>, io::Error> {
@@ -59,11 +57,11 @@ mod lift {
         }
     }
 
-    impl<T, InnerSink, E> Sink for LiftTransport<T, E> where
+    impl<T, RequestId, InnerSink, E> Sink for LiftTransport<T, E> where
         E: 'static,
         T: Sink<SinkItem = (RequestId, InnerSink), SinkError = io::Error>
     {
-        type SinkItem = Frame<InnerSink, (), E>;
+        type SinkItem = Frame<RequestId, InnerSink, (), E>;
         type SinkError = io::Error;
 
         fn start_send(&mut self, request: Self::SinkItem)
@@ -96,7 +94,7 @@ mod lift {
         }
     }
 
-    impl<T, InnerItem, InnerSink, E> Transport<()> for LiftTransport<T, E> where
+    impl<T, RequestId, InnerItem, InnerSink, E> Transport<RequestId, ()> for LiftTransport<T, E> where
         E: 'static,
         T: 'static,
         T: Stream<Item = (RequestId, InnerItem), Error = io::Error>,

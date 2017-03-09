@@ -1,8 +1,6 @@
-use super::RequestId;
-
 /// A multiplexed protocol frame
 #[derive(Debug, Clone)]
-pub enum Frame<T, B, E> {
+pub enum Frame<RequestId, T, B, E> {
     /// Either a request or a response.
     Message {
         /// Message exchange identifier
@@ -33,7 +31,7 @@ pub enum Frame<T, B, E> {
     },
 }
 
-impl<T, B, E> Frame<T, B, E> {
+impl<RequestId: Copy, T, B, E> Frame<RequestId, T, B, E> {
     /// Return the request ID associated with the frame.
     pub fn request_id(&self) -> RequestId {
         match *self {

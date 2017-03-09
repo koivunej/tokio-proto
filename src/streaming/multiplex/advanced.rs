@@ -57,19 +57,19 @@ pub struct Multiplex<T> where T: Dispatch {
     dispatch: BufferOne<DispatchSink<T>>,
 
     // Tracks in-progress exchanges
-    exchanges: HashMap<RequestId, Exchange<T>>,
+    exchanges: HashMap<T::RequestId, Exchange<T>>,
 
     // True when the transport is fully flushed
     is_flushed: bool,
 
     // RequestIds of exchanges that have not yet been dispatched
-    dispatch_deque: VecDeque<RequestId>,
+    dispatch_deque: VecDeque<T::RequestId>,
 
     // Storage for buffered frames
     frame_buf: FrameBuf<Option<Result<T::BodyOut, T::Error>>>,
 
     // Temporary storage for RequestIds...
-    scratch: Vec<RequestId>,
+    scratch: Vec<T::RequestId>,
 }
 
 impl<T> fmt::Debug for Multiplex<T>
@@ -153,9 +153,9 @@ enum WriteState {
 
 /// Message used to communicate through the multiplex dispatch
 #[derive(Debug)]
-pub struct MultiplexMessage<T, B, E> {
+pub struct MultiplexMessage<Id, T, B, E> {
     /// Request ID
-    pub id: RequestId,
+    pub id: Id,
     /// Message
     pub message: Result<Message<T, B>, E>,
     /// True if message has no pair (request / response)
@@ -179,6 +179,9 @@ pub trait Dispatch {
     /// Outbound body frame
     type BodyOut;
 
+    /// Request id type
+    type RequestId: RequestId;
+
     /// Transport error
     type Error: From<io::Error>;
 
@@ -186,24 +189,24 @@ pub trait Dispatch {
     type Stream: Stream<Item = Self::BodyIn, Error = Self::Error>;
 
     /// Transport type
-    type Transport: Transport<Self::BodyOut,
-                              Item = Frame<Self::Out, Self::BodyOut, Self::Error>,
-                              SinkItem = Frame<Self::In, Self::BodyIn, Self::Error>>;
+    type Transport: Transport<Self::RequestId, Self::BodyOut,
+                              Item = Frame<Self::RequestId, Self::Out, Self::BodyOut, Self::Error>,
+                              SinkItem = Frame<Self::RequestId, Self::In, Self::BodyIn, Self::Error>>;
 
     /// Mutable reference to the transport
     fn transport(&mut self) -> &mut Self::Transport;
 
     /// Poll the next available message
-    fn poll(&mut self) -> Poll<Option<MultiplexMessage<Self::In, Self::Stream, Self::Error>>, io::Error>;
+    fn poll(&mut self) -> Poll<Option<MultiplexMessage<Self::RequestId, Self::In, Self::Stream, Self::Error>>, io::Error>;
 
     /// The `Dispatch` is ready to accept another message
     fn poll_ready(&self) -> Async<()>;
 
     /// Process an out message
-    fn dispatch(&mut self, message: MultiplexMessage<Self::Out, Body<Self::BodyOut, Self::Error>, Self::Error>) -> io::Result<()>;
+    fn dispatch(&mut self, message: MultiplexMessage<Self::RequestId, Self::Out, Body<Self::BodyOut, Self::Error>, Self::Error>) -> io::Result<()>;
 
     /// Cancel interest in the exchange identified by RequestId
-    fn cancel(&mut self, request_id: RequestId) -> io::Result<()>;
+    fn cancel(&mut self, request_id: Self::RequestId) -> io::Result<()>;
 }
 
 /*
@@ -281,18 +284,18 @@ impl<T> Multiplex<T> where T: Dispatch {
         self.scratch.clear();
 
         for (id, exchange) in self.exchanges.iter_mut() {
-            trace!("   --> request={}", id);
+            trace!("   --> request={:?}", id);
             try!(exchange.flush_out_body());
 
             // If the exchange is complete, track it for removal
             if exchange.is_complete() {
-                self.scratch.push(*id);
+                self.scratch.push(id.clone());
             }
         }
 
         // Purge the scratch
         for id in &self.scratch {
-            trace!("drop exchange; id={}", id);
+            trace!("drop exchange; id={:?}", id);
             self.exchanges.remove(id);
         }
 
@@ -316,7 +319,7 @@ impl<T> Multiplex<T> where T: Dispatch {
 
     /// Process outbound frame
     fn process_out_frame(&mut self,
-                         frame: Option<Frame<T::Out, T::BodyOut, T::Error>>)
+                         frame: Option<Frame<T::RequestId, T::Out, T::BodyOut, T::Error>>)
                          -> io::Result<()> {
         trace!("Multiplex::process_out_frame");
 
@@ -352,7 +355,7 @@ impl<T> Multiplex<T> where T: Dispatch {
 
     /// Process an outbound message
     fn process_out_message(&mut self,
-                           id: RequestId,
+                           id: T::RequestId,
                            message: Message<T::Out, Body<T::BodyOut, T::Error>>,
                            body: Option<mpsc::Sender<Result<T::BodyOut, T::Error>>>,
                            solo: bool)
@@ -360,7 +363,7 @@ impl<T> Multiplex<T> where T: Dispatch {
     {
         trace!("   --> process message; body={:?}", body.is_some());
 
-        match self.exchanges.entry(id) {
+        match self.exchanges.entry(id.clone()) {
             Entry::Occupied(mut e) => {
                 assert!(!e.get().responded, "invalid exchange state");
                 assert!(e.get().is_inbound());
@@ -444,7 +447,7 @@ impl<T> Multiplex<T> where T: Dispatch {
     }
 
     // Process an error
-    fn process_out_err(&mut self, id: RequestId, err: T::Error) -> io::Result<()> {
+    fn process_out_err(&mut self, id: T::RequestId, err: T::Error) -> io::Result<()> {
         trace!("   --> process error frame");
 
         let mut remove = false;
@@ -465,7 +468,7 @@ impl<T> Multiplex<T> where T: Dispatch {
                 // The downstream dispatch has not provided a response to the
                 // exchange, indicate that interest has been canceled.
                 if !exchange.responded {
-                    try!(self.dispatch.get_mut().inner.cancel(id));
+                    try!(self.dispatch.get_mut().inner.cancel(id.clone()));
                 }
 
                 remove = exchange.is_complete();
@@ -473,7 +476,7 @@ impl<T> Multiplex<T> where T: Dispatch {
                 if !exchange.responded {
                     // A response has not been provided yet, send the error via
                     // the dispatch
-                    try!(self.dispatch.get_mut().inner.dispatch(MultiplexMessage::error(id, err)));
+                    try!(self.dispatch.get_mut().inner.dispatch(MultiplexMessage::error(id.clone(), err)));
 
                     exchange.responded = true;
                 } else {
@@ -495,7 +498,7 @@ impl<T> Multiplex<T> where T: Dispatch {
         Ok(())
     }
 
-    fn process_out_body_chunk(&mut self, id: RequestId, chunk: Result<Option<T::BodyOut>, T::Error>) {
+    fn process_out_body_chunk(&mut self, id: T::RequestId, chunk: Result<Option<T::BodyOut>, T::Error>) {
         trace!("process out body chunk; id={:?}", id);
 
         {
@@ -570,7 +573,7 @@ impl<T> Multiplex<T> where T: Dispatch {
     }
 
     fn write_in_message(&mut self,
-                        id: RequestId,
+                        id: T::RequestId,
                         message: Message<T::In, T::Stream>,
                         solo: bool)
                         -> io::Result<()>
@@ -582,7 +585,7 @@ impl<T> Multiplex<T> where T: Dispatch {
 
         // Create the frame
         let frame = Frame::Message {
-            id: id,
+            id: id.clone(),
             message: message,
             body: body.is_some(),
             solo: solo,
@@ -630,11 +633,11 @@ impl<T> Multiplex<T> where T: Dispatch {
     }
 
     fn write_in_error(&mut self,
-                      id: RequestId,
+                      id: T::RequestId,
                       error: T::Error)
                       -> io::Result<()>
     {
-        if let Entry::Occupied(mut e) = self.exchanges.entry(id) {
+        if let Entry::Occupied(mut e) = self.exchanges.entry(id.clone()) {
             assert!(!e.get().responded, "exchange already responded");
 
             // TODO: should the outbound body be canceled? In theory, if the
@@ -666,7 +669,7 @@ impl<T> Multiplex<T> where T: Dispatch {
 
         // Now, write the ready streams
         'outer:
-        for (&id, exchange) in &mut self.exchanges {
+        for (id, exchange) in &mut self.exchanges {
             trace!("   --> checking request {:?}", id);
 
             loop {
@@ -675,6 +678,8 @@ impl<T> Multiplex<T> where T: Dispatch {
                     self.blocked_on_flush.transport_not_write_ready();
                     break 'outer;
                 }
+
+                let id = id.clone();
 
                 match exchange.try_poll_in_body() {
                     Ok(Async::Ready(Some(chunk))) => {
@@ -719,7 +724,7 @@ impl<T> Multiplex<T> where T: Dispatch {
             }
 
             if exchange.is_complete() {
-                self.scratch.push(id);
+                self.scratch.push(id.clone());
             }
         }
 
@@ -1087,9 +1092,9 @@ fn assert_send<T>(s: &mut T, item: T::SinkItem) -> Result<(), T::SinkError>
  *
  */
 
-impl<T, B, E> MultiplexMessage<T, B, E> {
+impl<Id, T, B, E> MultiplexMessage<Id, T, B, E> {
     /// Create a new MultiplexMessage
-    pub fn new(id: RequestId, message: Message<T, B>) -> MultiplexMessage<T, B, E> {
+    pub fn new(id: Id, message: Message<T, B>) -> MultiplexMessage<Id, T, B, E> {
         MultiplexMessage {
             id: id,
             message: Ok(message),
@@ -1098,7 +1103,7 @@ impl<T, B, E> MultiplexMessage<T, B, E> {
     }
 
     /// Create a new errored MultiplexMessage
-    pub fn error(id: RequestId, error: E) -> MultiplexMessage<T, B, E> {
+    pub fn error(id: Id, error: E) -> MultiplexMessage<Id, T, B, E> {
         MultiplexMessage {
             id: id,
             message: Err(error),

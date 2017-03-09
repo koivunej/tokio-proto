@@ -48,14 +48,17 @@ pub trait ServerProto<T: 'static>: 'static {
     /// Response body chunks.
     type ResponseBody: 'static;
 
+    /// The type of request ids to used to correlate requests to responses
+    type RequestId: RequestId;
+
     /// Errors, which are used both for error frames and for the service itself.
     type Error: From<io::Error> + 'static;
 
     /// The frame transport, which usually take `T` as a parameter.
     type Transport:
-        Transport<Self::RequestBody,
-                  Item = Frame<Self::Request, Self::RequestBody, Self::Error>,
-                  SinkItem = Frame<Self::Response, Self::ResponseBody, Self::Error>>;
+        Transport<Self::RequestId, Self::RequestBody,
+                  Item = Frame<Self::RequestId, Self::Request, Self::RequestBody, Self::Error>,
+                  SinkItem = Frame<Self::RequestId, Self::Response, Self::ResponseBody, Self::Error>>;
 
     /// A future for initializing a transport from an I/O object.
     ///
@@ -101,7 +104,7 @@ struct Dispatch<S, T, P> where
     // The service handling the connection
     service: S,
     transport: P::Transport,
-    in_flight: Vec<(RequestId, InFlight<S::Future>)>,
+    in_flight: Vec<(P::RequestId, InFlight<S::Future>)>,
 }
 
 enum InFlight<F: Future> {
@@ -124,6 +127,7 @@ impl<P, T, B, S> super::advanced::Dispatch for Dispatch<S, T, P> where
     type BodyIn = P::ResponseBody;
     type Out = P::Request;
     type BodyOut = P::RequestBody;
+    type RequestId = P::RequestId;
     type Error = P::Error;
     type Stream = B;
     type Transport = P::Transport;
@@ -132,12 +136,12 @@ impl<P, T, B, S> super::advanced::Dispatch for Dispatch<S, T, P> where
         &mut self.transport
     }
 
-    fn poll(&mut self) -> Poll<Option<MultiplexMessage<Self::In, B, Self::Error>>, io::Error> {
+    fn poll(&mut self) -> Poll<Option<MultiplexMessage<Self::RequestId, Self::In, B, Self::Error>>, io::Error> {
         trace!("Dispatch::poll");
 
         let mut idx = None;
 
-        for (i, &mut (request_id, ref mut slot)) in self.in_flight.iter_mut().enumerate() {
+        for (i, &mut (ref request_id, ref mut slot)) in self.in_flight.iter_mut().enumerate() {
             trace!("   --> poll; request_id={:?}", request_id);
             if slot.poll() && idx.is_none() {
                 idx = Some(i);
@@ -158,7 +162,7 @@ impl<P, T, B, S> super::advanced::Dispatch for Dispatch<S, T, P> where
         }
     }
 
-    fn dispatch(&mut self, message: MultiplexMessage<Self::Out, Body<Self::BodyOut, Self::Error>, Self::Error>) -> io::Result<()> {
+    fn dispatch(&mut self, message: MultiplexMessage<Self::RequestId, Self::Out, Body<Self::BodyOut, Self::Error>, Self::Error>) -> io::Result<()> {
         assert!(self.poll_ready().is_ready());
 
         let MultiplexMessage { id, message, solo } = message;
@@ -183,7 +187,7 @@ impl<P, T, B, S> super::advanced::Dispatch for Dispatch<S, T, P> where
         }
     }
 
-    fn cancel(&mut self, _request_id: RequestId) -> io::Result<()> {
+    fn cancel(&mut self, _request_id: Self::RequestId) -> io::Result<()> {
         // TODO: implement
         Ok(())
     }

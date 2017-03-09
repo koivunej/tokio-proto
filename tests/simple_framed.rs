@@ -42,7 +42,7 @@ impl Encoder for PipelineCodec {
 struct MultiplexCodec;
 
 impl Decoder for MultiplexCodec {
-    type Item = multiplex::Frame<u32, (), io::Error>;
+    type Item = multiplex::Frame<u64, u32, (), io::Error>;
     type Error = io::Error;
 
     fn decode(&mut self, _: &mut BytesMut) -> io::Result<Option<Self::Item>> {
@@ -51,7 +51,7 @@ impl Decoder for MultiplexCodec {
 }
 
 impl Encoder for MultiplexCodec {
-    type Item = multiplex::Frame<u32, u32, io::Error>;
+    type Item = multiplex::Frame<u64, u32, u32, io::Error>;
     type Error = io::Error;
 
     fn encode(&mut self, _: Self::Item, _: &mut BytesMut) -> io::Result<()> {
@@ -83,6 +83,7 @@ impl<T: AsyncRead + AsyncWrite + 'static> multiplex::ServerProto<T> for Multiple
     type Response = u32;
     type Error = io::Error;
     type ResponseBody = u32;
+    type RequestId = u64;
     type Transport = Framed<T, MultiplexCodec>;
     type BindTransport = Result<Self::Transport, io::Error>;
 

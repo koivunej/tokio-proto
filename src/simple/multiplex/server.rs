@@ -2,12 +2,12 @@ use std::io;
 use std::marker;
 
 use BindServer;
-use super::{RequestId, Multiplex};
+use super::Multiplex;
 use super::lift::{LiftBind, LiftTransport};
 use simple::LiftProto;
 
 use streaming::{self, Message};
-use streaming::multiplex::StreamingMultiplex;
+use streaming::multiplex::{StreamingMultiplex, RequestId};
 use tokio_core::reactor::Handle;
 use tokio_service::Service;
 use futures::{stream, Stream, Sink, Future, IntoFuture, Poll};
@@ -29,14 +29,17 @@ pub trait ServerProto<T: 'static>: 'static {
     /// Response messages.
     type Response: 'static;
 
+    /// The type of request ids to used to correlate requests to responses
+    type RequestId: RequestId;
+
     /// The message transport, which usually take `T` as a parameter.
     ///
     /// An easy way to build a transport is to use `tokio_core::io::Framed`
     /// together with a `Codec`; in that case, the transport type is
     /// `Framed<T, YourCodec>`. See the crate docs for an example.
     type Transport: 'static +
-        Stream<Item = (RequestId, Self::Request), Error = io::Error> +
-        Sink<SinkItem = (RequestId, Self::Response), SinkError = io::Error>;
+        Stream<Item = (Self::RequestId, Self::Request), Error = io::Error> +
+        Sink<SinkItem = (Self::RequestId, Self::Response), SinkError = io::Error>;
 
     /// A future for initializing a transport from an I/O object.
     ///
@@ -76,6 +79,7 @@ impl<T, P> streaming::multiplex::ServerProto<T> for LiftProto<P> where
 
     type Response = P::Response;
     type ResponseBody = ();
+    type RequestId = P::RequestId;
 
     type Error = io::Error;
 
