@@ -54,11 +54,11 @@ impl<T, U, I> multiplex::ClientProto<I> for MockProtocol<multiplex::Frame<u64, T
     type ResponseBody = U;
     type RequestId = u64;
     type Error = io::Error;
-    type Transport = MockTransport<multiplex::Frame<u64, T, U, io::Error>>;
+    type Transport = MockTransport<multiplex::Frame<Self::RequestId, T, U, io::Error>>;
     type BindTransport = Result<Self::Transport, io::Error>;
 
     fn bind_transport(&self, _io: I)
-                      -> Result<MockTransport<multiplex::Frame<u64, T, U, io::Error>>, io::Error> {
+                      -> Result<MockTransport<multiplex::Frame<Self::RequestId, T, U, io::Error>>, io::Error> {
         Ok(self.0.borrow_mut().take().unwrap())
     }
 }
@@ -93,11 +93,11 @@ impl<T, U, I> multiplex::ServerProto<I> for MockProtocol<multiplex::Frame<u64, T
     type ResponseBody = U;
     type RequestId = u64;
     type Error = io::Error;
-    type Transport = MockTransport<multiplex::Frame<u64, T, U, io::Error>>;
+    type Transport = MockTransport<multiplex::Frame<Self::RequestId, T, U, io::Error>>;
     type BindTransport = Result<Self::Transport, io::Error>;
 
     fn bind_transport(&self, _io: I)
-                      -> Result<MockTransport<multiplex::Frame<u64, T, U, io::Error>>, io::Error> {
+                      -> Result<MockTransport<multiplex::Frame<Self::RequestId, T, U, io::Error>>, io::Error> {
         Ok(self.0.borrow_mut().take().unwrap())
     }
 }
